@@ -12,6 +12,8 @@ import matplotlib.pyplot as plt
 from datetime import datetime, timedelta
 import io
 import base64
+import time
+import requests
 
 class StockAnalyzer:
     """
@@ -24,51 +26,71 @@ class StockAnalyzer:
         Initialize with stock symbol (e.g., 'RELIANCE.NS' for NSE or 'RELIANCE.BO' for BSE)
         """
         self.symbol = symbol
-        self.stock = yf.Ticker(symbol)
-        self.info = self.stock.info
+        
+        # Create session with headers to avoid rate limiting
+        session = requests.Session()
+        session.headers.update({
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        })
+        
+        time.sleep(1.5)  # Rate limiting delay
+        
+        try:
+            self.stock = yf.Ticker(symbol, session=session)
+            time.sleep(1)
+            self.info = self.stock.info
+        except Exception as e:
+            print(f"Error initializing: {e}")
+            self.stock = yf.Ticker(symbol)
+            self.info = {}
         
     def get_financial_data(self):
-        """Fetch key financial data"""
+        """Fetch key financial data with error handling"""
         try:
+            # Fallback values if data is missing
+            safe_get = lambda key, default=0: self.info.get(key, default) if self.info.get(key) not in [None, 'None', ''] else default
+            
             return {
-                'pe_ratio': self.info.get('trailingPE', 0),
-                'forward_pe': self.info.get('forwardPE', 0),
-                'pb_ratio': self.info.get('priceToBook', 0),
-                'roe': self.info.get('returnOnEquity', 0),
-                'roa': self.info.get('returnOnAssets', 0),
-                'debt_to_equity': self.info.get('debtToEquity', 0),
-                'current_ratio': self.info.get('currentRatio', 0),
-                'profit_margin': self.info.get('profitMargins', 0),
-                'operating_margin': self.info.get('operatingMargins', 0),
-                'eps': self.info.get('trailingEps', 0),
-                'dividend_yield': self.info.get('dividendYield', 0) * 100 if self.info.get('dividendYield') else 0,
-                'peg_ratio': self.info.get('pegRatio', 0),
-                'revenue_growth': self.info.get('revenueGrowth', 0),
-                'earnings_growth': self.info.get('earningsGrowth', 0),
-                'market_cap': self.info.get('marketCap', 0),
-                'beta': self.info.get('beta', 0),
+                'pe_ratio': safe_get('trailingPE', 0),
+                'forward_pe': safe_get('forwardPE', 0),
+                'pb_ratio': safe_get('priceToBook', 0),
+                'roe': safe_get('returnOnEquity', 0),
+                'roa': safe_get('returnOnAssets', 0),
+                'debt_to_equity': safe_get('debtToEquity', 0),
+                'current_ratio': safe_get('currentRatio', 0),
+                'profit_margin': safe_get('profitMargins', 0),
+                'operating_margin': safe_get('operatingMargins', 0),
+                'eps': safe_get('trailingEps', 0),
+                'dividend_yield': (safe_get('dividendYield', 0) * 100) if safe_get('dividendYield', 0) else 0,
+                'peg_ratio': safe_get('pegRatio', 0),
+                'revenue_growth': safe_get('revenueGrowth', 0),
+                'earnings_growth': safe_get('earningsGrowth', 0),
+                'market_cap': safe_get('marketCap', 0),
+                'beta': safe_get('beta', 1),
             }
         except Exception as e:
             print(f"Error fetching financial data: {e}")
-            return {}
+            return {key: 0 for key in ['pe_ratio', 'pb_ratio', 'roe', 'debt_to_equity', 
+                                        'current_ratio', 'profit_margin', 'dividend_yield', 
+                                        'revenue_growth', 'eps', 'beta']}
     
     def calculate_score(self, value, thresholds, reverse=False):
-        """
-        Calculate score (0-10) based on value and thresholds
-        thresholds: list of 5 values representing score boundaries
-        """
+        """Calculate score (0-10) based on value and thresholds"""
         if value is None or value == 0:
-            return 0
+            return 5  # Default middle score instead of 0
+        
+        try:
+            value = float(value)
+        except:
+            return 5
         
         if reverse:
-            # Lower is better (e.g., P/E ratio, Debt/Equity)
             if value >= thresholds[4]: return 0
             elif value >= thresholds[3]: return 2
             elif value >= thresholds[2]: return 4
             elif value >= thresholds[1]: return 7
             else: return 10
         else:
-            # Higher is better (e.g., ROE, Profit Margin)
             if value <= thresholds[0]: return 0
             elif value <= thresholds[1]: return 2
             elif value <= thresholds[2]: return 4
@@ -76,15 +98,11 @@ class StockAnalyzer:
             else: return 10
     
     def analyze_parameters(self):
-        """
-        Analyze all parameters and assign scores (0-10)
-        Based on Indian market standards for long-term investment
-        """
+        """Analyze all parameters and assign scores (0-10)"""
         data = self.get_financial_data()
-        
         scores = {}
         
-        # 1. P/E Ratio (Lower is better for Indian market - ideal 15-25)
+        # 1. P/E Ratio
         pe = data.get('pe_ratio', 0)
         scores['pe_ratio'] = {
             'value': pe,
@@ -92,7 +110,7 @@ class StockAnalyzer:
             'weight': 1.2
         }
         
-        # 2. P/B Ratio (Lower is better - ideal 1-3)
+        # 2. P/B Ratio
         pb = data.get('pb_ratio', 0)
         scores['pb_ratio'] = {
             'value': pb,
@@ -100,7 +118,7 @@ class StockAnalyzer:
             'weight': 1.0
         }
         
-        # 3. ROE (Higher is better - ideal >15%)
+        # 3. ROE
         roe = data.get('roe', 0) * 100 if data.get('roe') else 0
         scores['roe'] = {
             'value': roe,
@@ -108,7 +126,7 @@ class StockAnalyzer:
             'weight': 1.5
         }
         
-        # 4. Debt to Equity (Lower is better - ideal <1)
+        # 4. Debt to Equity
         de = data.get('debt_to_equity', 0) / 100 if data.get('debt_to_equity') else 0
         scores['debt_to_equity'] = {
             'value': de,
@@ -116,7 +134,7 @@ class StockAnalyzer:
             'weight': 1.3
         }
         
-        # 5. Current Ratio (Higher is better - ideal >1.5)
+        # 5. Current Ratio
         cr = data.get('current_ratio', 0)
         scores['current_ratio'] = {
             'value': cr,
@@ -124,7 +142,7 @@ class StockAnalyzer:
             'weight': 0.8
         }
         
-        # 6. Profit Margin (Higher is better - ideal >10%)
+        # 6. Profit Margin
         pm = data.get('profit_margin', 0) * 100 if data.get('profit_margin') else 0
         scores['profit_margin'] = {
             'value': pm,
@@ -132,7 +150,7 @@ class StockAnalyzer:
             'weight': 1.2
         }
         
-        # 7. Dividend Yield (Higher is better for long-term - ideal >2%)
+        # 7. Dividend Yield
         dy = data.get('dividend_yield', 0)
         scores['dividend_yield'] = {
             'value': dy,
@@ -140,7 +158,7 @@ class StockAnalyzer:
             'weight': 0.9
         }
         
-        # 8. Revenue Growth (Higher is better - ideal >10%)
+        # 8. Revenue Growth
         rg = data.get('revenue_growth', 0) * 100 if data.get('revenue_growth') else 0
         scores['revenue_growth'] = {
             'value': rg,
@@ -148,7 +166,7 @@ class StockAnalyzer:
             'weight': 1.1
         }
         
-        # 9. EPS (Higher is better)
+        # 9. EPS
         eps = data.get('eps', 0)
         scores['eps'] = {
             'value': eps,
@@ -156,9 +174,9 @@ class StockAnalyzer:
             'weight': 1.0
         }
         
-        # 10. Beta (Volatility - closer to 1 is better for long-term, below 1.5)
-        beta = data.get('beta', 0)
-        beta_score = 10 if 0.8 <= beta <= 1.2 else (7 if 0.5 <= beta <= 1.5 else 4)
+        # 10. Beta
+        beta = data.get('beta', 1)
+        beta_score = 10 if 0.8 <= beta <= 1.2 else (7 if 0.5 <= beta <= 1.5 else 5)
         scores['beta'] = {
             'value': beta,
             'score': beta_score,
@@ -176,20 +194,25 @@ class StockAnalyzer:
             total_weighted_score += details['score'] * details['weight']
             total_weight += details['weight']
         
-        overall_score = total_weighted_score / total_weight if total_weight > 0 else 0
+        overall_score = total_weighted_score / total_weight if total_weight > 0 else 5
         return round(overall_score, 2)
     
     def get_historical_data(self, period='5y'):
-        """
-        Fetch historical stock data
-        period: 1d, 5d, 1mo, 3mo, 6mo, 1y, 2y, 5y, 10y, ytd, max
-        """
-        try:
-            hist = self.stock.history(period=period)
-            return hist
-        except Exception as e:
-            print(f"Error fetching historical data: {e}")
-            return pd.DataFrame()
+        """Fetch historical stock data with retry"""
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                time.sleep(1.5)
+                hist = self.stock.history(period=period)
+                if not hist.empty:
+                    return hist
+                time.sleep(2)
+            except Exception as e:
+                print(f"Attempt {attempt + 1} failed: {e}")
+                if attempt < max_retries - 1:
+                    time.sleep(3 * (attempt + 1))
+                    continue
+        return pd.DataFrame()
     
     def generate_price_chart(self, period='5y'):
         """Generate price chart for given period"""
@@ -204,12 +227,13 @@ class StockAnalyzer:
         plt.plot(hist.index, hist['Close'], color='#00ff88', linewidth=2, label='Close Price')
         plt.fill_between(hist.index, hist['Close'], alpha=0.3, color='#00ff88')
         
-        # Add moving averages
-        hist['MA50'] = hist['Close'].rolling(window=50).mean()
-        hist['MA200'] = hist['Close'].rolling(window=200).mean()
+        if len(hist) > 50:
+            hist['MA50'] = hist['Close'].rolling(window=50).mean()
+            plt.plot(hist.index, hist['MA50'], color='#ffaa00', linewidth=1.5, label='50-Day MA', alpha=0.7)
         
-        plt.plot(hist.index, hist['MA50'], color='#ffaa00', linewidth=1.5, label='50-Day MA', alpha=0.7)
-        plt.plot(hist.index, hist['MA200'], color='#ff0088', linewidth=1.5, label='200-Day MA', alpha=0.7)
+        if len(hist) > 200:
+            hist['MA200'] = hist['Close'].rolling(window=200).mean()
+            plt.plot(hist.index, hist['MA200'], color='#ff0088', linewidth=1.5, label='200-Day MA', alpha=0.7)
         
         plt.title(f'{self.symbol} - Price History ({period})', fontsize=16, color='white', pad=20)
         plt.xlabel('Date', fontsize=12, color='white')
@@ -218,7 +242,6 @@ class StockAnalyzer:
         plt.grid(True, alpha=0.2)
         plt.tight_layout()
         
-        # Convert plot to base64 string
         buffer = io.BytesIO()
         plt.savefig(buffer, format='png', dpi=100, facecolor='#000000', edgecolor='none')
         buffer.seek(0)
@@ -226,8 +249,7 @@ class StockAnalyzer:
         buffer.close()
         plt.close()
         
-        graphic = base64.b64encode(image_png).decode()
-        return graphic
+        return base64.b64encode(image_png).decode()
     
     def generate_volume_chart(self, period='5y'):
         """Generate volume chart"""
@@ -238,9 +260,7 @@ class StockAnalyzer:
         
         plt.figure(figsize=(12, 4))
         plt.style.use('dark_background')
-        
         plt.bar(hist.index, hist['Volume'], color='#00aaff', alpha=0.6, width=5)
-        
         plt.title(f'{self.symbol} - Volume History ({period})', fontsize=16, color='white', pad=20)
         plt.xlabel('Date', fontsize=12, color='white')
         plt.ylabel('Volume', fontsize=12, color='white')
@@ -254,8 +274,7 @@ class StockAnalyzer:
         buffer.close()
         plt.close()
         
-        graphic = base64.b64encode(image_png).decode()
-        return graphic
+        return base64.b64encode(image_png).decode()
     
     def get_recommendation(self, overall_score):
         """Get investment recommendation based on overall score"""
@@ -277,7 +296,7 @@ class StockAnalyzer:
             'sector': self.info.get('sector', 'N/A'),
             'industry': self.info.get('industry', 'N/A'),
             'website': self.info.get('website', 'N/A'),
-            'summary': self.info.get('longBusinessSummary', 'N/A'),
+            'summary': self.info.get('longBusinessSummary', 'N/A')[:500] if self.info.get('longBusinessSummary') else 'N/A',
             'employees': self.info.get('fullTimeEmployees', 'N/A'),
             'city': self.info.get('city', 'N/A'),
             'country': self.info.get('country', 'N/A'),
