@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stock Analyzer - Long-Term Investment Tool</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/nerd-fonts-web@3.0.0/dist/JetBrainsMono/nerd-font.css">
+</head>
+<body>
+    <canvas id="particleCanvas"></canvas>
+    
+    <div class="container">
+        <div class="dialog-box">
+            <h1 class="title">Indian Stock Market Analyzer</h1>
+            <p class="subtitle">Quantitative Analysis for Long-Term Investment</p>
+            
+            <div class="search-container">
+                <svg class="search-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <path d="m21 21-4.35-4.35"></path>
+                </svg>
+                <input type="text" id="stockSymbol" class="search-input" placeholder="Enter stock symbol (e.g., RELIANCE, TCS, INFY)" autocomplete="off">
+            </div>
+            
+            <div class="period-container">
+                <label for="period" class="period-label">Select Time Period:</label>
+                <select id="period" class="period-select">
+                    <option value="1mo">1 Month</option>
+                    <option value="3mo">3 Months</option>
+                    <option value="6mo">6 Months</option>
+                    <option value="1y">1 Year</option>
+                    <option value="2y">2 Years</option>
+                    <option value="5y" selected>5 Years</option>
+                    <option value="10y">10 Years</option>
+                    <option value="max">Maximum</option>
+                </select>
+            </div>
+            
+            <button id="analyzeBtn" class="analyze-btn">Analyze Stock</button>
+            
+            <div id="loading" class="loading hidden">
+                <div class="spinner"></div>
+                <p>Analyzing stock data...</p>
+            </div>
+            
+            <div id="error" class="error hidden"></div>
+        </div>
+    </div>
+    
+    <footer class="footer">
+        Created by Vivek Teotia
+    </footer>
+    
+    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+</body>
+</html>
